@@ -70,6 +70,9 @@ target_sources(SceneMemo
         src/fx/Reverb.cpp
         src/fx/Delay.cpp
         src/fx/MasterOutput.cpp
+        # Sequencers
+        src/sequencer/MicroSequencer.cpp
+        src/sequencer/FoleyRhythm.cpp
         # Field Engine
         src/field/AudioImporter.cpp
         src/field/SourceAnalyzer.cpp
