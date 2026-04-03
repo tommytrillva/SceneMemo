@@ -32,14 +32,8 @@ void VoiceAllocator::reset()
 }
 
 void VoiceAllocator::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi,
-                                   float oscLevel, float tuneSemitones, float fineCents,
-                                   int waveformIndex, const AHDSREnvelope::Parameters& envParams)
+                                   const EngineParams& params, float bpm, double ppqPosition)
 {
-    // Update envelope parameters for all voices (read once per block from APVTS)
-    for (auto& voice : voices)
-        voice.setEnvelopeParameters (envParams);
-
-    // Sample-accurate MIDI processing
     int currentSample = 0;
     const int totalSamples = buffer.getNumSamples();
 
@@ -47,23 +41,20 @@ void VoiceAllocator::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     {
         const int eventSample = metadata.samplePosition;
 
-        // Render voices up to this MIDI event
         if (eventSample > currentSample)
         {
             renderVoices (buffer, currentSample, eventSample - currentSample,
-                          oscLevel, tuneSemitones, fineCents);
+                          params, bpm, ppqPosition);
             currentSample = eventSample;
         }
 
-        handleMidiEvent (metadata.getMessage(), waveformIndex);
+        handleMidiEvent (metadata.getMessage(), params);
     }
 
-    // Render remaining samples after last MIDI event
     if (currentSample < totalSamples)
         renderVoices (buffer, currentSample, totalSamples - currentSample,
-                      oscLevel, tuneSemitones, fineCents);
+                      params, bpm, ppqPosition);
 
-    // Increment age counters
     for (auto& voice : voices)
     {
         if (voice.isActive())
@@ -71,38 +62,44 @@ void VoiceAllocator::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 }
 
-void VoiceAllocator::handleMidiEvent (const juce::MidiMessage& msg, int waveformIndex)
+void VoiceAllocator::handleMidiEvent (const juce::MidiMessage& msg, const EngineParams& params)
 {
     if (msg.isNoteOn())
     {
         int note = msg.getNoteNumber();
         float velocity = msg.getFloatVelocity();
 
-        // Check if this note is already playing (retrigger)
         Voice* existing = findVoicePlayingNote (note);
         if (existing != nullptr)
         {
-            int wtIdx = std::clamp (waveformIndex, 0, static_cast<int> (Waveform::NumWaveforms) - 1);
-            existing->noteOn (note, velocity, wavetables[static_cast<size_t> (wtIdx)]);
+            existing->noteOn (note, velocity, params, wavetables);
             return;
         }
 
-        // Allocate a new voice
         Voice* voice = findFreeVoice();
         if (voice == nullptr)
             voice = findVoiceToSteal();
 
         if (voice != nullptr)
-        {
-            int wtIdx = std::clamp (waveformIndex, 0, static_cast<int> (Waveform::NumWaveforms) - 1);
-            voice->noteOn (note, velocity, wavetables[static_cast<size_t> (wtIdx)]);
-        }
+            voice->noteOn (note, velocity, params, wavetables);
     }
     else if (msg.isNoteOff())
     {
         Voice* voice = findVoicePlayingNote (msg.getNoteNumber());
         if (voice != nullptr)
             voice->noteOff();
+    }
+    else if (msg.isControllerOfType (1)) // Mod wheel
+    {
+        float value = static_cast<float> (msg.getControllerValue()) / 127.0f;
+        for (auto& voice : voices)
+            voice.setModWheel (value);
+    }
+    else if (msg.isChannelPressure())
+    {
+        float value = static_cast<float> (msg.getChannelPressureValue()) / 127.0f;
+        for (auto& voice : voices)
+            voice.setAftertouch (value);
     }
     else if (msg.isAllNotesOff() || msg.isAllSoundOff())
     {
@@ -111,7 +108,7 @@ void VoiceAllocator::handleMidiEvent (const juce::MidiMessage& msg, int waveform
 }
 
 void VoiceAllocator::renderVoices (juce::AudioBuffer<float>& buffer, int startSample, int numSamples,
-                                   float oscLevel, float tuneSemitones, float fineCents)
+                                   const EngineParams& params, float bpm, double ppqPosition)
 {
     auto* leftChannel  = buffer.getWritePointer (0) + startSample;
     auto* rightChannel = buffer.getNumChannels() > 1
@@ -122,7 +119,8 @@ void VoiceAllocator::renderVoices (juce::AudioBuffer<float>& buffer, int startSa
     {
         if (voice.isActive())
             voice.renderBlock (leftChannel, rightChannel, numSamples,
-                               oscLevel, tuneSemitones, fineCents, sampleRate);
+                               params, modMatrix, wavetables,
+                               sampleRate, bpm, ppqPosition);
     }
 }
 
@@ -141,7 +139,6 @@ Voice* VoiceAllocator::findVoiceToSteal()
     Voice* best = nullptr;
     int bestAge = -1;
 
-    // Prefer voices in Release state
     for (auto& voice : voices)
     {
         if (voice.getEnvelopeState() == AHDSREnvelope::State::Release
@@ -158,7 +155,6 @@ Voice* VoiceAllocator::findVoiceToSteal()
         return best;
     }
 
-    // No voices in release — steal oldest active voice
     for (auto& voice : voices)
     {
         if (voice.getAge() > bestAge)

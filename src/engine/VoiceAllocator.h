@@ -2,7 +2,8 @@
 
 #include "engine/Voice.h"
 #include "engine/WavetableOsc.h"
-#include "engine/Envelope.h"
+#include "engine/ModMatrix.h"
+#include "engine/ParamReader.h"
 #include "util/Constants.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <array>
@@ -17,27 +18,26 @@ public:
 
     void prepareToPlay (float sampleRate, int blockSize);
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi,
-                       float oscLevel, float tuneSemitones, float fineCents,
-                       int waveformIndex, const AHDSREnvelope::Parameters& envParams);
+                       const EngineParams& params, float bpm, double ppqPosition);
     void reset();
 
 private:
     std::array<Voice, kMaxVoices> voices;
     std::array<std::shared_ptr<const Wavetable>,
                static_cast<size_t> (Waveform::NumWaveforms)> wavetables;
+    ModMatrix modMatrix;
     float sampleRate = 44100.0f;
     int blockSize = 512;
 
     void buildWavetables();
-    void handleMidiEvent (const juce::MidiMessage& msg, int waveformIndex);
+    void handleMidiEvent (const juce::MidiMessage& msg, const EngineParams& params);
 
     Voice* findFreeVoice();
     Voice* findVoiceToSteal();
     Voice* findVoicePlayingNote (int midiNote);
 
-    // Render all active voices into the buffer range [startSample, startSample + numSamples)
     void renderVoices (juce::AudioBuffer<float>& buffer, int startSample, int numSamples,
-                       float oscLevel, float tuneSemitones, float fineCents);
+                       const EngineParams& params, float bpm, double ppqPosition);
 };
 
 } // namespace scenememo

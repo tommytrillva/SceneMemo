@@ -21,25 +21,82 @@ private:
     using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
-    // Controls
-    juce::Slider masterVolSlider, oscLevelSlider, tuneSlider, fineSlider, dryWetSlider;
-    juce::Slider attackSlider, holdSlider, decaySlider, sustainSlider, releaseSlider;
-    juce::ComboBox waveformBox;
-    juce::ToggleButton bypassButton;
+    // Tabs
+    juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
 
-    // Labels
-    juce::Label masterVolLabel, oscLevelLabel, tuneLabel, fineLabel, dryWetLabel;
-    juce::Label attackLabel, holdLabel, decayLabel, sustainLabel, releaseLabel;
-    juce::Label waveformLabel;
+    // Helper to create a tab page with knobs for given parameters
+    struct ParamControl
+    {
+        juce::Slider slider;
+        juce::Label label;
+        std::unique_ptr<SliderAttachment> attachment;
+    };
 
-    // Attachments (must be destroyed before the controls they reference)
-    std::unique_ptr<SliderAttachment> masterVolAtt, oscLevelAtt, tuneAtt, fineAtt, dryWetAtt;
-    std::unique_ptr<SliderAttachment> attackAtt, holdAtt, decayAtt, sustainAtt, releaseAtt;
-    std::unique_ptr<ComboBoxAttachment> waveformAtt;
-    std::unique_ptr<ButtonAttachment> bypassAtt;
+    struct ChoiceControl
+    {
+        juce::ComboBox combo;
+        juce::Label label;
+        std::unique_ptr<ComboBoxAttachment> attachment;
+    };
 
-    void setupSlider (juce::Slider& slider, juce::Label& label, const juce::String& labelText,
-                      std::unique_ptr<SliderAttachment>& attachment, const juce::String& paramId);
+    // Oscillator tab
+    struct OscTab : public juce::Component
+    {
+        OscTab (juce::AudioProcessorValueTreeState& apvts, int oscIndex);
+        void resized() override;
+
+        ChoiceControl type, waveform;
+        ParamControl level, pan, tune, fine, octave, wtPos, unison, spread;
+    };
+
+    // Filter tab
+    struct FilterTab : public juce::Component
+    {
+        FilterTab (juce::AudioProcessorValueTreeState& apvts);
+        void resized() override;
+
+        ChoiceControl type1, type2, routing;
+        ParamControl cutoff1, reso1, drive1, keyTrack1, envAmt1;
+        ParamControl cutoff2, reso2, drive2, keyTrack2, envAmt2;
+    };
+
+    // Envelope tab
+    struct EnvTab : public juce::Component
+    {
+        EnvTab (juce::AudioProcessorValueTreeState& apvts, int envIndex);
+        void resized() override;
+
+        ParamControl attack, hold, decay, sustain, release;
+        ParamControl attackCurve, decayCurve, releaseCurve;
+    };
+
+    // Master / Global tab
+    struct MasterTab : public juce::Component
+    {
+        MasterTab (juce::AudioProcessorValueTreeState& apvts);
+        void resized() override;
+
+        ParamControl masterVol, dryWet;
+        ParamControl macro1, macro2, macro3, macro4;
+        juce::ToggleButton bypassButton;
+        std::unique_ptr<ButtonAttachment> bypassAtt;
+    };
+
+    // Owned tab components
+    std::unique_ptr<OscTab> oscTab1, oscTab2, oscTab3, oscTab4;
+    std::unique_ptr<FilterTab> filterTab;
+    std::unique_ptr<EnvTab> envTab1, envTab2, envTab3, envTab4;
+    std::unique_ptr<MasterTab> masterTab;
+
+    // Helper methods
+    static void setupSlider (ParamControl& pc, const juce::String& labelText,
+                             const juce::String& paramId,
+                             juce::AudioProcessorValueTreeState& apvts,
+                             juce::Component* parent);
+    static void setupCombo (ChoiceControl& cc, const juce::String& labelText,
+                            const juce::String& paramId,
+                            juce::AudioProcessorValueTreeState& apvts,
+                            juce::Component* parent);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SceneMemoEditor)
 };

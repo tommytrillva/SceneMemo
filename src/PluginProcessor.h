@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 #include "engine/VoiceAllocator.h"
+#include "engine/ParamReader.h"
 #include "util/SmoothedParam.h"
 #include "util/Constants.h"
 
@@ -42,25 +43,10 @@ public:
 private:
     juce::AudioProcessorValueTreeState apvts;
     VoiceAllocator voiceAllocator;
+    ParamReader paramReader;
+    EngineParams engineParams;
 
-    // Raw parameter pointers (into APVTS atomics)
-    std::atomic<float>* bypassParam    = nullptr;
-    std::atomic<float>* masterVolParam = nullptr;
-    std::atomic<float>* dryWetParam    = nullptr;
-    std::atomic<float>* oscLevelParam  = nullptr;
-    std::atomic<float>* oscTuneParam   = nullptr;
-    std::atomic<float>* oscFineParam   = nullptr;
-    std::atomic<float>* oscWaveformParam = nullptr;
-    std::atomic<float>* envAttackParam  = nullptr;
-    std::atomic<float>* envHoldParam    = nullptr;
-    std::atomic<float>* envDecayParam   = nullptr;
-    std::atomic<float>* envSustainParam = nullptr;
-    std::atomic<float>* envReleaseParam = nullptr;
-
-    // Smoothed master volume
     SmoothedParam masterVolSmoothed;
-
-    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SceneMemoProcessor)
 };

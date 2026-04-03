@@ -18,7 +18,8 @@ void AHDSREnvelope::setSampleRate (float sr)
 
 void AHDSREnvelope::noteOn()
 {
-    // Start attack from current level (smooth retrigger)
+    attackStartLevel = currentLevel;
+    attackProgress = 0.0f;
     state = State::Attack;
     recalculateRates();
 }
@@ -36,6 +37,8 @@ void AHDSREnvelope::reset()
 {
     state = State::Idle;
     currentLevel = 0.0f;
+    attackProgress = 0.0f;
+    attackStartLevel = 0.0f;
     holdSamplesRemaining = 0;
 }
 
@@ -47,14 +50,22 @@ float AHDSREnvelope::processSample()
             return 0.0f;
 
         case State::Attack:
-            currentLevel += attackRate;
-            if (currentLevel >= 1.0f)
+        {
+            attackProgress += attackRate;
+            if (attackProgress >= 1.0f)
             {
+                attackProgress = 1.0f;
                 currentLevel = 1.0f;
                 state = State::Hold;
                 holdSamplesRemaining = static_cast<int> (params.hold * sampleRate);
             }
+            else
+            {
+                float shaped = shapeCurve (attackProgress, params.attackCurve);
+                currentLevel = attackStartLevel + (1.0f - attackStartLevel) * shaped;
+            }
             break;
+        }
 
         case State::Hold:
             if (--holdSamplesRemaining <= 0)
@@ -63,11 +74,9 @@ float AHDSREnvelope::processSample()
 
         case State::Decay:
         {
-            // Exponential decay toward sustain level
             float target = params.sustain;
             currentLevel = target + (currentLevel - target) * decayCoeff;
 
-            // Transition when close enough to sustain
             if (std::abs (currentLevel - target) < 0.0001f)
             {
                 currentLevel = target;
@@ -95,19 +104,20 @@ float AHDSREnvelope::processSample()
 
 void AHDSREnvelope::recalculateRates()
 {
-    // Linear attack rate: reach 1.0 in attack time
     float attackSamples = std::max (1.0f, params.attack * sampleRate);
     attackRate = 1.0f / attackSamples;
 
-    // Exponential coefficients for decay and release
-    decayCoeff = calcExpCoeff (params.decay);
-    releaseCoeff = calcExpCoeff (params.release);
+    // Apply curve to exponential coefficients:
+    // Positive curve = faster initial decay (more convex), negative = slower (more concave)
+    float decayTime = params.decay * std::pow (2.0f, -params.decayCurve * 0.5f);
+    float releaseTime = params.release * std::pow (2.0f, -params.releaseCurve * 0.5f);
+
+    decayCoeff = calcExpCoeff (decayTime);
+    releaseCoeff = calcExpCoeff (releaseTime);
 }
 
 float AHDSREnvelope::calcExpCoeff (float timeSeconds) const
 {
-    // Coefficient per sample for exponential decay.
-    // After 'timeSeconds', signal reaches ~0.001 of original (-60dB).
     if (timeSeconds <= 0.0f)
         return 0.0f;
 
@@ -115,8 +125,20 @@ float AHDSREnvelope::calcExpCoeff (float timeSeconds) const
     if (numSamples < 1.0f)
         return 0.0f;
 
-    // exp(-6.9 / N) gives ~0.001 after N samples (e^-6.9 ≈ 0.001)
     return std::exp (-6.9078f / numSamples);
+}
+
+float AHDSREnvelope::shapeCurve (float linearValue, float curveAmount)
+{
+    // curveAmount: -1 = concave (fast start, slow finish)
+    //               0 = linear
+    //              +1 = convex (slow start, fast finish)
+    if (std::abs (curveAmount) < 0.01f)
+        return linearValue;
+
+    // Map curve to exponent: 2^(curve*2) gives range [0.25, 4]
+    float exponent = std::pow (2.0f, curveAmount * 2.0f);
+    return std::pow (linearValue, exponent);
 }
 
 } // namespace scenememo

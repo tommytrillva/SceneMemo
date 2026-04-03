@@ -41,10 +41,23 @@ target_sources(SceneMemo
     PRIVATE
         src/PluginProcessor.cpp
         src/PluginEditor.cpp
+        # Engine — oscillators
         src/engine/WavetableOsc.cpp
+        src/engine/VirtualAnalogOsc.cpp
+        src/engine/NoiseOsc.cpp
+        src/engine/SubOsc.cpp
+        src/engine/OscillatorSlot.cpp
+        # Engine — core
         src/engine/Envelope.cpp
+        src/engine/LFO.cpp
+        src/engine/MultiModeFilter.cpp
+        src/engine/ModMatrix.cpp
         src/engine/Voice.cpp
         src/engine/VoiceAllocator.cpp
+        # Engine — parameters
+        src/engine/ParameterLayout.cpp
+        src/engine/ParamReader.cpp
+        # Utilities
         src/util/SmoothedParam.cpp
 )
 
