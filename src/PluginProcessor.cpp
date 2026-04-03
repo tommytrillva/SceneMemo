@@ -7,35 +7,53 @@ namespace scenememo {
 SceneMemoProcessor::SceneMemoProcessor()
     : AudioProcessor (BusesProperties()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "SceneMemoState", params::createFullLayout())
+      apvts (*this, nullptr, "SceneMemoState", params::createFullLayout()),
+      presetManager (apvts)
 {
     paramReader.cachePointers (apvts);
+    presetManager.scanPresets();
 }
 
 SceneMemoProcessor::~SceneMemoProcessor() = default;
 
 void SceneMemoProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    float sr = static_cast<float> (sampleRate);
-    voiceAllocator.prepareToPlay (sr, samplesPerBlock);
-    fieldEngine.prepareToPlay (sr, samplesPerBlock);
+    currentSampleRate = static_cast<float> (sampleRate);
+    voiceAllocator.prepareToPlay (currentSampleRate, samplesPerBlock);
+    fieldEngine.prepareToPlay (currentSampleRate, samplesPerBlock);
+    gritSection.prepareToPlay (currentSampleRate);
+    motionFX.prepareToPlay (currentSampleRate);
+    sidechainModule.prepareToPlay (currentSampleRate);
+    reverbEffect.prepareToPlay (currentSampleRate, samplesPerBlock);
+    delayEffect.prepareToPlay (currentSampleRate);
+    masterOutput.prepareToPlay (currentSampleRate);
     masterVolSmoothed.init (apvts.getRawParameterValue (param::kMasterVol),
-                            kParamSmoothingSeconds, sr);
+                            kParamSmoothingSeconds, currentSampleRate);
 }
 
 void SceneMemoProcessor::releaseResources()
 {
     voiceAllocator.reset();
+    fieldEngine.reset();
+    gritSection.reset();
+    motionFX.reset();
+    sidechainModule.reset();
+    reverbEffect.reset();
+    delayEffect.reset();
+    masterOutput.reset();
 }
 
 void SceneMemoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-        buffer.clear (ch, 0, buffer.getNumSamples());
+    const int numSamples = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
 
-    // Read all parameters once
+    for (int ch = 0; ch < numChannels; ++ch)
+        buffer.clear (ch, 0, numSamples);
+
+    // Read all parameters once per block
     paramReader.readAll (engineParams);
 
     if (engineParams.bypass)
@@ -56,24 +74,87 @@ void SceneMemoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         }
     }
 
-    // Process Scene Engine (synthesis)
+    // ========================================================================
+    // 1. Scene Engine (synthesis) → renders into main buffer
+    // ========================================================================
     voiceAllocator.processBlock (buffer, midi, engineParams, bpm, ppqPosition);
 
-    // Process Field Engine (granular/spectral) — output is additive
+    // ========================================================================
+    // 2. Field Engine (granular/spectral) → renders into temp buffer, blend
+    // ========================================================================
     if (fieldEngine.hasAudioLoaded())
     {
+        // Render Field Engine into temp buffers
+        juce::AudioBuffer<float> fieldBuffer (numChannels, numSamples);
+        fieldBuffer.clear();
+
         FieldEngineParams fieldParams;
-        fieldParams.level = 0.8f; // TODO: expose as parameter in future phase
-        fieldEngine.renderBlock (buffer.getWritePointer (0),
-                                 buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : buffer.getWritePointer (0),
-                                 buffer.getNumSamples(), fieldParams);
+        fieldParams.level = 0.8f;
+        fieldEngine.renderBlock (fieldBuffer.getWritePointer (0),
+                                 numChannels > 1 ? fieldBuffer.getWritePointer (1) : fieldBuffer.getWritePointer (0),
+                                 numSamples, fieldParams);
+
+        // Blend Scene + Field using the blend matrix
+        // For now, additive blend (full Scene + Field)
+        for (int ch = 0; ch < numChannels; ++ch)
+            buffer.addFrom (ch, 0, fieldBuffer, ch, 0, numSamples);
     }
 
-    // Apply smoothed master volume
-    masterVolSmoothed.updateTarget();
-    const int numSamples = buffer.getNumSamples();
-    const int numChannels = buffer.getNumChannels();
+    // ========================================================================
+    // 3. Processing Chain: Grit → Motion FX → Sidechain → Space
+    // ========================================================================
 
+    float* left = buffer.getWritePointer (0);
+    float* right = numChannels > 1 ? buffer.getWritePointer (1) : left;
+
+    // Grit Section (Tape + Vinyl + BitCrush + Decade)
+    {
+        GritParams gritParams;
+        gritParams.decade = 1.0f; // TODO: expose as parameter
+        gritSection.processBlock (left, right, numSamples, gritParams);
+    }
+
+    // Motion FX (Tremolo, Phaser, Chorus, Filter Sweep)
+    {
+        MotionFXParams motionParams;
+        motionFX.processBlock (left, right, numSamples, motionParams, bpm);
+    }
+
+    // Sidechain
+    {
+        SidechainParams scParams;
+        sidechainModule.processBlock (left, right, numSamples, scParams);
+    }
+
+    // Reverb
+    {
+        ReverbParams reverbParams;
+        reverbParams.mix = 0.15f; // subtle default
+        reverbParams.size = 0.5f;
+        reverbParams.damping = 0.5f;
+        reverbEffect.processBlock (left, right, numSamples, reverbParams);
+    }
+
+    // Delay
+    {
+        DelayParams delayParams;
+        delayEffect.processBlock (left, right, numSamples, delayParams, bpm);
+    }
+
+    // ========================================================================
+    // 4. Master Output (Width, EQ, Limiter)
+    // ========================================================================
+    {
+        MasterOutputParams masterParams;
+        masterParams.dryWet = engineParams.dryWet;
+        masterParams.limiterEnabled = true;
+        masterOutput.processBlock (left, right, numSamples, masterParams);
+    }
+
+    // ========================================================================
+    // 5. Smoothed Master Volume
+    // ========================================================================
+    masterVolSmoothed.updateTarget();
     for (int i = 0; i < numSamples; ++i)
     {
         float vol = masterVolSmoothed.getNextValue();
