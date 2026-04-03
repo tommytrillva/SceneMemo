@@ -18,6 +18,7 @@ void SceneMemoProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     float sr = static_cast<float> (sampleRate);
     voiceAllocator.prepareToPlay (sr, samplesPerBlock);
+    fieldEngine.prepareToPlay (sr, samplesPerBlock);
     masterVolSmoothed.init (apvts.getRawParameterValue (param::kMasterVol),
                             kParamSmoothingSeconds, sr);
 }
@@ -55,8 +56,18 @@ void SceneMemoProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
         }
     }
 
-    // Process voices
+    // Process Scene Engine (synthesis)
     voiceAllocator.processBlock (buffer, midi, engineParams, bpm, ppqPosition);
+
+    // Process Field Engine (granular/spectral) — output is additive
+    if (fieldEngine.hasAudioLoaded())
+    {
+        FieldEngineParams fieldParams;
+        fieldParams.level = 0.8f; // TODO: expose as parameter in future phase
+        fieldEngine.renderBlock (buffer.getWritePointer (0),
+                                 buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : buffer.getWritePointer (0),
+                                 buffer.getNumSamples(), fieldParams);
+    }
 
     // Apply smoothed master volume
     masterVolSmoothed.updateTarget();

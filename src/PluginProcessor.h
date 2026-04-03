@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "engine/VoiceAllocator.h"
 #include "engine/ParamReader.h"
+#include "field/FieldEngine.h"
 #include "util/SmoothedParam.h"
 #include "util/Constants.h"
 
@@ -39,10 +40,12 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+    FieldEngine& getFieldEngine() { return fieldEngine; }
 
 private:
     juce::AudioProcessorValueTreeState apvts;
     VoiceAllocator voiceAllocator;
+    FieldEngine fieldEngine;
     ParamReader paramReader;
     EngineParams engineParams;
 

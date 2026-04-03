@@ -82,11 +82,28 @@ private:
         std::unique_ptr<ButtonAttachment> bypassAtt;
     };
 
+    // Field Engine tab
+    struct FieldTab : public juce::Component, public juce::FileDragAndDropTarget
+    {
+        FieldTab (SceneMemoProcessor& proc);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        bool isInterestedInFileDrag (const juce::StringArray& files) override;
+        void filesDropped (const juce::StringArray& files, int x, int y) override;
+
+        SceneMemoProcessor& processor;
+        juce::TextButton loadButton { "Load Audio" };
+        juce::TextButton recordButton { "Record" };
+        juce::TextButton freezeButton { "Freeze" };
+        juce::Label statusLabel;
+    };
+
     // Owned tab components
     std::unique_ptr<OscTab> oscTab1, oscTab2, oscTab3, oscTab4;
     std::unique_ptr<FilterTab> filterTab;
     std::unique_ptr<EnvTab> envTab1, envTab2, envTab3, envTab4;
     std::unique_ptr<MasterTab> masterTab;
+    std::unique_ptr<FieldTab> fieldTab;
 
     // Helper methods
     static void setupSlider (ParamControl& pc, const juce::String& labelText,

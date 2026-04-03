@@ -234,6 +234,129 @@ void SceneMemoEditor::MasterTab::resized()
 }
 
 // ============================================================================
+// FieldTab
+// ============================================================================
+
+SceneMemoEditor::FieldTab::FieldTab (SceneMemoProcessor& proc)
+    : processor (proc)
+{
+    loadButton.onClick = [this]
+    {
+        auto chooser = std::make_shared<juce::FileChooser> (
+            "Load Audio", juce::File(), "*.wav;*.aiff;*.mp3;*.flac;*.ogg;*.m4a");
+
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [this, chooser] (const juce::FileChooser& fc)
+            {
+                auto file = fc.getResult();
+                if (file.existsAsFile())
+                {
+                    processor.getFieldEngine().loadAudioFile (file, processor.getSampleRate());
+                    statusLabel.setText ("Loaded: " + file.getFileName(), juce::dontSendNotification);
+                }
+            });
+    };
+    addAndMakeVisible (loadButton);
+
+    recordButton.onClick = [this]
+    {
+        auto& rec = processor.getFieldEngine().getRecorder();
+        if (rec.getState() == MomentRecorder::State::Idle)
+        {
+            rec.startRecording();
+            recordButton.setButtonText ("Stop");
+        }
+        else
+        {
+            rec.stopRecording();
+            recordButton.setButtonText ("Record");
+            processor.getFieldEngine().loadFromRecorder();
+            statusLabel.setText ("Recorded: " + juce::String (rec.getRecordedLengthSeconds(), 1) + "s",
+                                juce::dontSendNotification);
+        }
+    };
+    addAndMakeVisible (recordButton);
+
+    freezeButton.onClick = [this]
+    {
+        auto& freeze = processor.getFieldEngine().getSpectralFreeze();
+        if (freeze.isFrozen())
+            freeze.unfreeze();
+        else
+            processor.getFieldEngine().triggerFreeze();
+
+        freezeButton.setButtonText (freeze.isFrozen() ? "Unfreeze" : "Freeze");
+    };
+    addAndMakeVisible (freezeButton);
+
+    statusLabel.setText ("Drag audio here or click Load", juce::dontSendNotification);
+    statusLabel.setJustificationType (juce::Justification::centred);
+    statusLabel.setColour (juce::Label::textColourId, juce::Colour (0xff8888aa));
+    addAndMakeVisible (statusLabel);
+}
+
+void SceneMemoEditor::FieldTab::resized()
+{
+    auto area = getLocalBounds().reduced (20);
+    auto topRow = area.removeFromTop (30);
+    loadButton.setBounds (topRow.removeFromLeft (100));
+    topRow.removeFromLeft (10);
+    recordButton.setBounds (topRow.removeFromLeft (100));
+    topRow.removeFromLeft (10);
+    freezeButton.setBounds (topRow.removeFromLeft (100));
+
+    area.removeFromTop (20);
+    statusLabel.setBounds (area.removeFromTop (30));
+}
+
+void SceneMemoEditor::FieldTab::paint (juce::Graphics& g)
+{
+    g.setColour (juce::Colour (0xff2a2a3e));
+    g.fillAll();
+
+    // Draw drop zone
+    auto dropZone = getLocalBounds().reduced (20).withTrimmedTop (80);
+    g.setColour (juce::Colour (0xff3a3a4e));
+    g.drawRoundedRectangle (dropZone.toFloat(), 8.0f, 2.0f);
+
+    if (processor.getFieldEngine().hasAudioLoaded())
+    {
+        g.setColour (juce::Colour (0xff5a8a5a));
+        g.setFont (juce::FontOptions (14.0f));
+        g.drawText ("Audio loaded - Field Engine active", dropZone, juce::Justification::centred);
+    }
+    else
+    {
+        g.setColour (juce::Colour (0xff666688));
+        g.setFont (juce::FontOptions (14.0f));
+        g.drawText ("Drop audio file here", dropZone, juce::Justification::centred);
+    }
+}
+
+bool SceneMemoEditor::FieldTab::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (auto& f : files)
+        if (processor.getFieldEngine().getImporter().isFormatSupported (juce::File (f)))
+            return true;
+    return false;
+}
+
+void SceneMemoEditor::FieldTab::filesDropped (const juce::StringArray& files, int, int)
+{
+    for (auto& f : files)
+    {
+        juce::File file (f);
+        if (processor.getFieldEngine().getImporter().isFormatSupported (file))
+        {
+            processor.getFieldEngine().loadAudioFile (file, processor.getSampleRate());
+            statusLabel.setText ("Loaded: " + file.getFileName(), juce::dontSendNotification);
+            repaint();
+            break;
+        }
+    }
+}
+
+// ============================================================================
 // Main Editor
 // ============================================================================
 
@@ -254,6 +377,7 @@ SceneMemoEditor::SceneMemoEditor (SceneMemoProcessor& p)
     envTab3 = std::make_unique<EnvTab> (apvts, 3);
     envTab4 = std::make_unique<EnvTab> (apvts, 4);
     masterTab = std::make_unique<MasterTab> (apvts);
+    fieldTab = std::make_unique<FieldTab> (p);
 
     auto tabColor = juce::Colour (0xff2a2a3e);
     tabs.addTab ("Osc 1", tabColor, oscTab1.get(), false);
@@ -261,6 +385,7 @@ SceneMemoEditor::SceneMemoEditor (SceneMemoProcessor& p)
     tabs.addTab ("Osc 3", tabColor, oscTab3.get(), false);
     tabs.addTab ("Osc 4", tabColor, oscTab4.get(), false);
     tabs.addTab ("Filter", tabColor, filterTab.get(), false);
+    tabs.addTab ("Field", juce::Colour (0xff2e3a2e), fieldTab.get(), false);
     tabs.addTab ("Env 1", tabColor, envTab1.get(), false);
     tabs.addTab ("Env 2", tabColor, envTab2.get(), false);
     tabs.addTab ("Env 3", tabColor, envTab3.get(), false);

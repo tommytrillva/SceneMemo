@@ -59,6 +59,13 @@ target_sources(SceneMemo
         src/engine/ParamReader.cpp
         # Utilities
         src/util/SmoothedParam.cpp
+        # Field Engine
+        src/field/AudioImporter.cpp
+        src/field/SourceAnalyzer.cpp
+        src/field/GranularEngine.cpp
+        src/field/SpectralFreeze.cpp
+        src/field/MomentRecorder.cpp
+        src/field/FieldEngine.cpp
 )
 
 target_include_directories(SceneMemo
@@ -78,6 +85,8 @@ target_compile_definitions(SceneMemo
 target_link_libraries(SceneMemo
     PRIVATE
         juce::juce_audio_utils
+        juce::juce_audio_formats
+        juce::juce_audio_devices
         juce::juce_dsp
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
