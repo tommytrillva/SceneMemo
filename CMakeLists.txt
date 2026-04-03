@@ -59,6 +59,17 @@ target_sources(SceneMemo
         src/engine/ParamReader.cpp
         # Utilities
         src/util/SmoothedParam.cpp
+        # Mixer
+        src/mixer/MoodLanes.cpp
+        src/mixer/BlendMatrix.cpp
+        src/mixer/SceneMorph.cpp
+        # FX chain
+        src/fx/GritSection.cpp
+        src/fx/MotionFX.cpp
+        src/fx/SidechainModule.cpp
+        src/fx/Reverb.cpp
+        src/fx/Delay.cpp
+        src/fx/MasterOutput.cpp
         # Field Engine
         src/field/AudioImporter.cpp
         src/field/SourceAnalyzer.cpp
