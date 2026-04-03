@@ -34,7 +34,7 @@ juce_add_plugin(SceneMemo
     PLUGIN_CODE Scm1
     FORMATS VST3 AU Standalone
     PRODUCT_NAME "SceneMemo"
-    COPY_PLUGIN_AFTER_BUILD TRUE
+    COPY_PLUGIN_AFTER_BUILD FALSE
 )
 
 target_sources(SceneMemo
@@ -96,8 +96,14 @@ target_compile_definitions(SceneMemo
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_ALSA=1
+        $<$<PLATFORM_ID:Linux>:JUCE_ALSA=1>
 )
+
+# Suppress MSVC warnings for JUCE and standard library usage
+if(MSVC)
+    target_compile_options(SceneMemo PRIVATE /W3 /wd4244 /wd4267 /wd4305)
+    target_compile_definitions(SceneMemo PRIVATE _USE_MATH_DEFINES)
+endif()
 
 target_link_libraries(SceneMemo
     PRIVATE

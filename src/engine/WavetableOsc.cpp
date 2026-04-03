@@ -134,7 +134,7 @@ static std::vector<float> generateBandLimitedWave (int size,
 {
     std::vector<float> table (static_cast<size_t> (size), 0.0f);
     const int maxHarmonics = size / 2; // Nyquist limit for the base table
-    const float twoPi = 2.0f * static_cast<float> (M_PI);
+    const float twoPi = 6.28318530718f;
 
     for (int h = 1; h <= maxHarmonics; ++h)
     {
